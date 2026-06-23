@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar System Map</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: sans-serif; display: flex; flex-direction: row; transition: background 0.2s, color 0.2s; }
+body.dark { background: #000; color: #ccc; }
+body.light { background: #fff; color: #222; }
+#sidebar { width: 240px; min-width: 240px; padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+body.dark #sidebar { border-right: 1px solid #333; }
+body.light #sidebar { border-right: 1px solid #ccc; }
+#sidebar h2 { font-size: 16px; margin-bottom: 4px; }
+#sidebar label { font-size: 13px; display: block; margin-bottom: 2px; }
+#sidebar input[type="date"], #sidebar input[type="number"] { font-size: 13px; padding: 4px 6px; width: 100%; }
+body.dark #sidebar input { background: #222; color: #ccc; border: 1px solid #555; }
+body.light #sidebar input { background: #fff; color: #222; border: 1px solid #aaa; }
+#sidebar .row { display: flex; gap: 6px; align-items: center; }
+#sidebar .row button { flex: 1; }
+button { cursor: pointer; border-radius: 3px; font-size: 13px; padding: 4px 8px; }
+body.dark button { background: #333; color: #ccc; border: 1px solid #555; }
+body.dark button:hover { background: #444; }
+body.light button { background: #ddd; color: #222; border: 1px solid #aaa; }
+body.light button:hover { background: #ccc; }
+button.active { background: #68a !important; color: #fff !important; border-color: #8bc !important; }
+.date-picker { display: flex; align-items: center; gap: 2px; }
+.date-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.date-col input { text-align: center; font-size: 14px; font-family: monospace; padding: 3px 2px; width: 100%; }
+.date-col:first-child input { width: 48px; }
+.date-col:nth-child(3) input, .date-col:nth-child(5) input { width: 32px; }
+.date-sep { font-size: 14px; padding: 0 1px; align-self: center; }
+button.arr { font-size: 11px; padding: 4px 8px; line-height: 1; width: 100%; }
+#display { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+canvas { display: block; }
+#panelToggle { position: absolute; top: 8px; left: 8px; z-index: 1; font-size: 18px; width: 32px; height: 32px; padding: 0; line-height: 32px; text-align: center; opacity: 0.6; }
+#panelToggle:hover { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <div>
+    <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+      <label style="text-align:center; width:100px;">Date</label>
+      <label style="text-align:center; flex:0 0 45px;">Radius</label>
+    </div>
+    <div class="date-picker" style="justify-content:space-between;">
+      <div style="display:flex; gap:2px;">
+        <div class="date-col">
+          <label>Year</label>
+          <button class="arr" tabindex="-1" onclick="stepPart('y',1)">▲</button>
+          <input type="text" id="dpYear" size="4" maxlength="4" tabindex="1">
+          <button class="arr" tabindex="-1" onclick="stepPart('y',-1)">▼</button>
+        </div>
+        <div class="date-col">
+          <label>Mo</label>
+          <button class="arr" tabindex="-1" onclick="stepPart('m',1)">▲</button>
+          <input type="text" id="dpMonth" size="2" maxlength="2" tabindex="2">
+          <button class="arr" tabindex="-1" onclick="stepPart('m',-1)">▼</button>
+        </div>
+        <div class="date-col">
+          <label>Day</label>
+          <button class="arr" tabindex="-1" onclick="stepPart('d',1)">▲</button>
+          <input type="text" id="dpDay" size="2" maxlength="2" tabindex="3">
+          <button class="arr" tabindex="-1" onclick="stepPart('d',-1)">▼</button>
+        </div>
+      </div>
+      <div class="date-col">
+        <label>AU</label>
+        <button class="arr" tabindex="-1" onclick="stepAU(0.5)" style="width:45px">▲</button>
+        <input type="text" id="auInput" value="10.0" size="4" style="text-align:center; width:45px;" autocomplete="off">
+        <button class="arr" tabindex="-1" onclick="stepAU(-0.5)" style="width:45px">▼</button>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <button onclick="setToday()">Now</button>
+    <button id="btnBack" onclick="playAnim(-1)">◀</button>
+    <button id="btnStop" class="active" onclick="animStop()">■</button>
+    <button id="btnFwd" onclick="playAnim(1)">▶</button>
+  </div>
+  <div>
+    <label>Object Selection</label>
+    <div style="margin-bottom:4px; line-height:1.4;">
+      <label style="margin-bottom:0;"><input type="radio" name="objMode" value="auto" checked> Automatic</label>
+      <label style="margin-bottom:0;"><input type="radio" name="objMode" value="manual"> Manual</label>
+    </div>
+    <div id="objCheckboxes" style="display:grid; grid-template-columns:1fr 1fr; gap:1px 8px;">
+      <label><input type="checkbox" id="objSun"> Sun</label>
+      <label><input type="checkbox" id="objMoon"> Moon</label>
+      <label><input type="checkbox" id="objMercury"> Mercury</label>
+      <label><input type="checkbox" id="objVenus"> Venus</label>
+      <label><input type="checkbox" id="objEarth"> Earth</label>
+      <label><input type="checkbox" id="objMars"> Mars</label>
+      <label><input type="checkbox" id="objJupiter"> Jupiter</label>
+      <label><input type="checkbox" id="objSaturn"> Saturn</label>
+      <label><input type="checkbox" id="objUranus"> Uranus</label>
+      <label><input type="checkbox" id="objNeptune"> Neptune</label>
+      <label><input type="checkbox" id="objPluto"> Pluto</label>
+    </div>
+  </div>
+  <div>
+    <label>Other Options</label>
+  </div>
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <label><input type="checkbox" id="darkToggle" checked> Dark mode</label>
+    <label><input type="checkbox" id="sunTopToggle"> Sun at top</label>
+  </div>
+  <div>
+    <label><input type="checkbox" id="eclToggle" checked> Show Ecliptic Constellations</label>
+  </div>
+  <div>
+    <label><input type="checkbox" id="inclToggle"> Show Orbits Edge On</label>
+  </div>
+  <div>
+    <button onclick="savePNG()">Save PNG</button>
+  </div>
+  <div style="font-size:13px; line-height:1.4; opacity:0.7; margin-top:4px;">
+    <p>This solar system map shows how the planets orbital motion around their sun relates to their paths through the constellations as seen from Earth. The Moon's orbit is exaggerated by 77x! Orbit calculations from 1900 to 2100 use formulas from <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html" target="_blank" style="color:inherit;">JPL</a>.</p>
+    <p><br>For a sky map that shows the view from your location on Earth, click <a href="skymap.html">here</a>.</p>
+  </div>
+</div>
+<div id="display">
+  <button id="panelToggle" onclick="togglePanel()" title="Toggle control panel">&#9776;</button>
+  <canvas id="cv"></canvas>
+</div>
+
+<script>
+"use strict";
+
+// ---- Embedded star & constellation data ----
+const STARS = [
+  {hr:3, lam:6.26478, beta:-0.10063, mag:4.62},
+  {hr:39, lam:0.1598, beta:0.21991, mag:2.83},
+  {hr:74, lam:0.01599, beta:-0.17491, mag:3.55},
+  {hr:194, lam:0.10285, beta:-0.24633, mag:4.77},
+  {hr:224, lam:0.24692, beta:0.03799, mag:4.42},
+  {hr:248, lam:0.20499, beta:-0.10971, mag:4.76},
+  {hr:294, lam:0.30588, beta:0.01909, mag:4.28},
+  {hr:351, lam:0.42817, beta:0.21713, mag:4.66},
+  {hr:434, lam:0.40379, beta:-0.05348, mag:4.84},
+  {hr:437, lam:0.46803, beta:0.09386, mag:3.63},
+  {hr:489, lam:0.44517, beta:-0.08193, mag:4.44},
+  {hr:500, lam:0.39142, beta:-0.23318, mag:4.99},
+  {hr:510, lam:0.48421, beta:-0.02828, mag:4.27},
+  {hr:545, lam:0.57919, beta:0.12504, mag:4.64},
+  {hr:546, lam:0.57918, beta:0.12501, mag:3.88},
+  {hr:549, lam:0.48033, beta:-0.13826, mag:4.62},
+  {hr:553, lam:0.59289, beta:0.14813, mag:2.66},
+  {hr:569, lam:0.62291, beta:0.18898, mag:4.77},
+  {hr:595, lam:0.51275, beta:-0.15814, mag:3.82},
+  {hr:596, lam:0.51275, beta:-0.15814, mag:3.82},
+  {hr:617, lam:0.65733, beta:0.17392, mag:2.02},
+  {hr:623, lam:0.681, beta:0.21147, mag:4.98},
+  {hr:649, lam:0.59413, beta:-0.07447, mag:4.37},
+  {hr:718, lam:0.65397, beta:-0.1022, mag:4.28},
+  {hr:754, lam:0.66999, beta:-0.16023, mag:4.88},
+  {hr:779, lam:0.65574, beta:-0.2524, mag:4.07},
+  {hr:801, lam:0.81917, beta:0.19746, mag:4.65},
+  {hr:804, lam:0.68823, beta:-0.20937, mag:3.47},
+  {hr:813, lam:0.73202, beta:-0.09716, mag:4.27},
+  {hr:824, lam:0.84418, beta:0.21785, mag:4.52},
+  {hr:838, lam:0.84131, beta:0.18238, mag:3.62},
+  {hr:887, lam:0.84645, beta:0.07286, mag:4.63},
+  {hr:888, lam:0.84646, beta:0.07286, mag:4.63},
+  {hr:896, lam:0.78703, beta:-0.13589, mag:4.71},
+  {hr:911, lam:0.77353, beta:-0.21966, mag:2.55},
+  {hr:951, lam:0.88755, beta:0.03183, mag:4.35},
+  {hr:972, lam:0.90656, beta:0.05047, mag:4.88},
+  {hr:996, lam:0.84352, beta:-0.25221, mag:4.85},
+  {hr:999, lam:0.96414, beta:0.17973, mag:4.46},
+  {hr:1030, lam:0.89297, beta:-0.16291, mag:3.61},
+  {hr:1038, lam:0.90603, beta:-0.15357, mag:3.73},
+  {hr:1066, lam:0.93537, beta:-0.10325, mag:4.13},
+  {hr:1123, lam:1.06695, beta:0.24277, mag:4.98},
+  {hr:1131, lam:1.06715, beta:0.21266, mag:3.86},
+  {hr:1142, lam:1.03693, beta:0.07313, mag:3.71},
+  {hr:1145, lam:1.0396, beta:0.07886, mag:4.3},
+  {hr:1149, lam:1.04162, beta:0.07662, mag:3.88},
+  {hr:1156, lam:1.04195, beta:0.06904, mag:4.17},
+  {hr:1165, lam:1.04707, beta:0.0707, mag:2.87},
+  {hr:1178, lam:1.05341, beta:0.06837, mag:3.63},
+  {hr:1203, lam:1.10172, beta:0.19781, mag:2.88},
+  {hr:1228, lam:1.13398, beta:0.26082, mag:4.05},
+  {hr:1239, lam:1.05827, beta:-0.13893, mag:3.42},
+  {hr:1251, lam:1.04579, beta:-0.25223, mag:3.9},
+  {hr:1256, lam:1.10751, beta:0.02199, mag:4.35},
+  {hr:1311, lam:1.10399, beta:-0.20503, mag:4.89},
+  {hr:1320, lam:1.1097, beta:-0.21265, mag:4.29},
+  {hr:1329, lam:1.15294, beta:-0.01311, mag:4.92},
+  {hr:1343, lam:1.20717, beta:0.22534, mag:4.93},
+  {hr:1346, lam:1.14853, beta:-0.10005, mag:3.65},
+  {hr:1348, lam:1.18526, beta:0.10126, mag:4.95},
+  {hr:1373, lam:1.16711, beta:-0.06928, mag:3.76},
+  {hr:1380, lam:1.17161, beta:-0.07176, mag:4.8},
+  {hr:1387, lam:1.19039, beta:0.01094, mag:4.21},
+  {hr:1389, lam:1.17871, beta:-0.06436, mag:4.31},
+  {hr:1392, lam:1.19556, beta:0.0193, mag:4.29},
+  {hr:1394, lam:1.1758, beta:-0.10473, mag:4.49},
+  {hr:1396, lam:1.17437, beta:-0.12049, mag:4.69},
+  {hr:1407, lam:1.18656, beta:-0.09333, mag:4.97},
+  {hr:1409, lam:1.19494, beta:-0.04481, mag:3.54},
+  {hr:1411, lam:1.18604, beta:-0.10027, mag:3.84},
+  {hr:1412, lam:1.18616, beta:-0.1019, mag:3.41},
+  {hr:1427, lam:1.19494, beta:-0.09755, mag:4.77},
+  {hr:1444, lam:1.20514, beta:-0.12291, mag:4.65},
+  {hr:1457, lam:1.21805, beta:-0.09542, mag:0.99},
+  {hr:1458, lam:1.20071, beta:-0.2049, mag:4.25},
+  {hr:1473, lam:1.21748, beta:-0.16584, mag:4.27},
+  {hr:1479, lam:1.23058, beta:-0.10762, mag:4.67},
+  {hr:1497, lam:1.25932, beta:0.01246, mag:4.27},
+  {hr:1533, lam:1.32098, beta:0.26033, mag:4.87},
+  {hr:1544, lam:1.26304, beta:-0.23533, mag:4.36},
+  {hr:1551, lam:1.32897, beta:0.24558, mag:4.78},
+  {hr:1556, lam:1.28268, beta:-0.14359, mag:4.74},
+  {hr:1570, lam:1.28447, beta:-0.21583, mag:4.66},
+  {hr:1577, lam:1.33761, beta:0.18246, mag:2.68},
+  {hr:1580, lam:1.29755, beta:-0.1582, mag:4.08},
+  {hr:1620, lam:1.3402, beta:-0.02093, mag:4.62},
+  {hr:1638, lam:1.3358, beta:-0.12898, mag:4.67},
+  {hr:1656, lam:1.35313, beta:-0.07378, mag:4.92},
+  {hr:1676, lam:1.35777, beta:-0.1276, mag:4.82},
+  {hr:1706, lam:1.40499, beta:0.16782, mag:4.99},
+  {hr:1726, lam:1.41616, beta:0.17895, mag:4.54},
+  {hr:1739, lam:1.40626, beta:-0.01763, mag:4.95},
+  {hr:1773, lam:1.44457, beta:0.24727, mag:4.99},
+  {hr:1780, lam:1.42195, beta:-0.1011, mag:5},
+  {hr:1791, lam:1.4412, beta:0.09399, mag:1.68},
+  {hr:1810, lam:1.43983, beta:-0.02255, mag:4.88},
+  {hr:1843, lam:1.46893, beta:0.15517, mag:4.74},
+  {hr:1845, lam:1.45552, beta:-0.08179, mag:4.36},
+  {hr:1876, lam:1.4592, beta:-0.24103, mag:4.41},
+  {hr:1879, lam:1.46096, beta:-0.23334, mag:3.39},
+  {hr:1907, lam:1.46829, beta:-0.24489, mag:4.09},
+  {hr:1910, lam:1.47977, beta:-0.03832, mag:3},
+  {hr:1946, lam:1.492, beta:-0.11924, mag:4.84},
+  {hr:2002, lam:1.5272, beta:0.02011, mag:4.89},
+  {hr:2010, lam:1.5255, beta:-0.18787, mag:4.88},
+  {hr:2011, lam:1.53877, beta:0.24226, mag:4.73},
+  {hr:2034, lam:1.54493, beta:0.07298, mag:4.56},
+  {hr:2047, lam:1.54777, beta:-0.05509, mag:4.4},
+  {hr:2084, lam:1.56292, beta:0.0439, mag:4.83},
+  {hr:2095, lam:1.5698, beta:0.24039, mag:2.65},
+  {hr:2124, lam:1.58135, beta:-0.24069, mag:4.13},
+  {hr:2134, lam:1.58731, beta:-0.00301, mag:4.18},
+  {hr:2135, lam:1.58688, beta:-0.05756, mag:4.64},
+  {hr:2159, lam:1.60311, beta:-0.15112, mag:4.42},
+  {hr:2198, lam:1.62173, beta:-0.12703, mag:4.96},
+  {hr:2199, lam:1.62196, beta:-0.16057, mag:4.46},
+  {hr:2216, lam:1.63077, beta:-0.0155, mag:3.3},
+  {hr:2219, lam:1.62952, beta:0.10653, mag:4.33},
+  {hr:2286, lam:1.66333, beta:-0.01431, mag:2.9},
+  {hr:2343, lam:1.68952, beta:-0.05334, mag:4.14},
+  {hr:2421, lam:1.7297, beta:-0.11768, mag:2.02},
+  {hr:2456, lam:1.75172, beta:-0.22996, mag:4.67},
+  {hr:2473, lam:1.74426, beta:0.03613, mag:3.01},
+  {hr:2478, lam:1.76038, beta:-0.171, mag:4.49},
+  {hr:2484, lam:1.76643, beta:-0.17635, mag:3.34},
+  {hr:2503, lam:1.78248, beta:-0.26015, mag:4.77},
+  {hr:2540, lam:1.76494, beta:0.19251, mag:3.61},
+  {hr:2564, lam:1.8062, beta:-0.16797, mag:4.7},
+  {hr:2650, lam:1.83243, beta:-0.03558, mag:4.01},
+  {hr:2697, lam:1.84035, beta:0.13534, mag:4.39},
+  {hr:2763, lam:1.89855, beta:-0.09835, mag:3.58},
+  {hr:2777, lam:1.89402, beta:-0.00311, mag:3.54},
+  {hr:2821, lam:1.90166, beta:0.1005, mag:3.79},
+  {hr:2828, lam:1.94888, beta:-0.21934, mag:4.99},
+  {hr:2845, lam:1.95811, beta:-0.2354, mag:2.89},
+  {hr:2852, lam:1.90396, beta:0.17121, mag:4.18},
+  {hr:2854, lam:1.96081, beta:-0.22376, mag:4.33},
+  {hr:2864, lam:1.95945, beta:-0.16954, mag:4.54},
+  {hr:2890, lam:1.92407, beta:0.17621, mag:2.88},
+  {hr:2891, lam:1.92405, beta:0.1762, mag:1.58},
+  {hr:2905, lam:1.94333, beta:0.09104, mag:4.07},
+  {hr:2930, lam:1.93283, beta:0.22538, mag:4.89},
+  {hr:2973, lam:1.9657, beta:0.13004, mag:4.25},
+  {hr:2985, lam:1.98384, beta:0.05373, mag:3.57},
+  {hr:2990, lam:1.97599, beta:0.11666, mag:1.22},
+  {hr:3003, lam:2.00868, beta:-0.04622, mag:4.87},
+  {hr:3067, lam:2.01139, beta:0.10086, mag:4.98},
+  {hr:3149, lam:2.04616, beta:0.12615, mag:4.94},
+  {hr:3249, lam:2.1687, beta:-0.17955, mag:3.52},
+  {hr:3410, lam:2.27424, beta:-0.21629, mag:4.14},
+  {hr:3418, lam:2.29004, beta:-0.25485, mag:4.45},
+  {hr:3449, lam:2.22597, beta:0.05568, mag:4.67},
+  {hr:3454, lam:2.30914, beta:-0.24872, mag:4.29},
+  {hr:3461, lam:2.24662, beta:0.00135, mag:3.93},
+  {hr:3475, lam:2.20516, beta:0.18198, mag:4.02},
+  {hr:3482, lam:2.30985, beta:-0.1938, mag:3.4},
+  {hr:3492, lam:2.31971, beta:-0.20162, mag:4.35},
+  {hr:3547, lam:2.34879, beta:-0.19146, mag:3.12},
+  {hr:3572, lam:2.33249, beta:-0.08867, mag:4.26},
+  {hr:3613, lam:2.39798, beta:-0.19252, mag:4.99},
+  {hr:3665, lam:2.4485, beta:-0.2278, mag:3.89},
+  {hr:3731, lam:2.36136, beta:0.18197, mag:4.47},
+  {hr:3773, lam:2.40634, beta:0.13768, mag:4.3},
+  {hr:3782, lam:2.47221, beta:-0.05508, mag:4.97},
+  {hr:3787, lam:2.54361, beta:-0.26129, mag:4.55},
+  {hr:3834, lam:2.53668, beta:-0.15585, mag:4.67},
+  {hr:3845, lam:2.57684, beta:-0.24918, mag:3.9},
+  {hr:3852, lam:2.51759, beta:-0.06558, mag:3.53},
+  {hr:3873, lam:2.45576, beta:0.16957, mag:2.97},
+  {hr:3905, lam:2.46842, beta:0.21553, mag:3.88},
+  {hr:3950, lam:2.606, beta:-0.06828, mag:4.67},
+  {hr:3975, lam:2.58143, beta:0.08492, mag:3.52},
+  {hr:3980, lam:2.62522, beta:-0.02478, mag:4.37},
+  {hr:3981, lam:2.68983, beta:-0.194, mag:4.48},
+  {hr:3982, lam:2.61501, beta:0.00811, mag:1.41},
+  {hr:4031, lam:2.5755, beta:0.20708, mag:3.44},
+  {hr:4054, lam:2.61274, beta:0.14747, mag:4.78},
+  {hr:4057, lam:2.61127, beta:0.15385, mag:2.23},
+  {hr:4058, lam:2.6113, beta:0.15384, mag:3.47},
+  {hr:4133, lam:2.7295, beta:0.00261, mag:3.85},
+  {hr:4291, lam:2.87839, beta:-0.04393, mag:4.85},
+  {hr:4294, lam:2.86246, beta:-0.00361, mag:5},
+  {hr:4299, lam:2.92487, beta:-0.14002, mag:4.72},
+  {hr:4300, lam:2.7725, beta:0.22544, mag:4.41},
+  {hr:4310, lam:2.87122, beta:0.02341, mag:4.62},
+  {hr:4357, lam:2.81551, beta:0.25017, mag:2.56},
+  {hr:4359, lam:2.85227, beta:0.16885, mag:3.33},
+  {hr:4368, lam:2.99295, beta:-0.13345, mag:4.47},
+  {hr:4386, lam:2.94447, beta:0.02962, mag:4.05},
+  {hr:4399, lam:2.92458, beta:0.10656, mag:3.96},
+  {hr:4402, lam:3.0761, beta:-0.2351, mag:4.81},
+  {hr:4418, lam:2.99344, beta:-0.00968, mag:4.94},
+  {hr:4432, lam:3.04345, beta:-0.09955, mag:4.76},
+  {hr:4468, lam:3.11701, beta:-0.19729, mag:4.69},
+  {hr:4471, lam:3.05497, beta:-0.05315, mag:4.3},
+  {hr:4515, lam:3.02528, beta:0.10672, mag:4.84},
+  {hr:4517, lam:3.03965, beta:0.08005, mag:4.03},
+  {hr:4534, lam:2.99529, beta:0.2141, mag:2.13},
+  {hr:4540, lam:3.0921, beta:0.01212, mag:3.6},
+  {hr:4589, lam:3.09899, beta:0.10739, mag:4.66},
+  {hr:4608, lam:3.10135, beta:0.14878, mag:4.12},
+  {hr:4662, lam:3.32879, beta:-0.25309, mag:2.59},
+  {hr:4689, lam:3.22593, beta:0.02383, mag:3.89},
+  {hr:4695, lam:3.20009, beta:0.08834, mag:4.97},
+  {hr:4757, lam:3.37637, beta:-0.21287, mag:2.97},
+  {hr:4775, lam:3.38272, beta:-0.20404, mag:4.31},
+  {hr:4813, lam:3.35372, beta:-0.06053, mag:4.65},
+  {hr:4825, lam:3.31859, beta:0.0487, mag:3.48},
+  {hr:4826, lam:3.31859, beta:0.0487, mag:3.5},
+  {hr:4828, lam:3.23782, beta:0.23637, mag:4.87},
+  {hr:4902, lam:3.42434, beta:-0.05992, mag:4.79},
+  {hr:4910, lam:3.34162, beta:0.15033, mag:3.42},
+  {hr:4958, lam:3.57516, beta:-0.2544, mag:4.94},
+  {hr:4963, lam:3.45989, beta:0.03042, mag:4.39},
+  {hr:5015, lam:3.41713, beta:0.22078, mag:4.79},
+  {hr:5019, lam:3.57805, beta:-0.16228, mag:4.74},
+  {hr:5020, lam:3.61315, beta:-0.23985, mag:3},
+  {hr:5056, lam:3.5577, beta:-0.03586, mag:1.06},
+  {hr:5068, lam:3.59787, beta:-0.1103, mag:4.75},
+  {hr:5095, lam:3.55329, beta:0.05449, mag:4.7},
+  {hr:5105, lam:3.49757, beta:0.21879, mag:4.92},
+  {hr:5107, lam:3.52791, beta:0.15074, mag:3.38},
+  {hr:5196, lam:3.69932, beta:-0.11143, mag:4.96},
+  {hr:5264, lam:3.6259, beta:0.22798, mag:4.24},
+  {hr:5287, lam:3.81571, beta:-0.22776, mag:3.26},
+  {hr:5301, lam:3.77054, beta:-0.05125, mag:4.94},
+  {hr:5313, lam:3.66519, beta:0.25827, mag:4.99},
+  {hr:5315, lam:3.74362, beta:0.05084, mag:4.18},
+  {hr:5338, lam:3.73146, beta:0.12565, mag:4.08},
+  {hr:5359, lam:3.78653, beta:0.00856, mag:4.52},
+  {hr:5381, lam:3.88484, beta:-0.22332, mag:4.79},
+  {hr:5407, lam:3.91399, beta:-0.24555, mag:4.98},
+  {hr:5409, lam:3.76035, beta:0.20526, mag:4.84},
+  {hr:5487, lam:3.84201, beta:0.16881, mag:3.87},
+  {hr:5526, lam:3.98776, beta:-0.19369, mag:4.42},
+  {hr:5531, lam:3.92843, beta:0.00581, mag:2.75},
+  {hr:5535, lam:3.85758, beta:0.23517, mag:4.93},
+  {hr:5570, lam:3.89471, beta:0.20898, mag:4.47},
+  {hr:5586, lam:3.93193, beta:0.14393, mag:4.95},
+  {hr:5603, lam:4.02625, beta:-0.13342, mag:3.28},
+  {hr:5652, lam:4.03179, beta:-0.03228, mag:4.56},
+  {hr:5660, lam:4.09617, beta:-0.22702, mag:4.92},
+  {hr:5685, lam:4.00329, beta:0.14828, mag:2.61},
+  {hr:5686, lam:4.1015, beta:-0.20076, mag:4.34},
+  {hr:5723, lam:4.03774, beta:0.1404, mag:4.92},
+  {hr:5777, lam:4.07863, beta:0.1553, mag:4.61},
+  {hr:5787, lam:4.10393, beta:0.07655, mag:3.92},
+  {hr:5794, lam:4.16452, beta:-0.14848, mag:3.6},
+  {hr:5812, lam:4.17746, beta:-0.1749, mag:3.66},
+  {hr:5820, lam:4.20097, beta:-0.25256, mag:4.66},
+  {hr:5824, lam:4.15947, beta:-0.07223, mag:4.95},
+  {hr:5838, lam:4.14965, beta:-0.00034, mag:4.75},
+  {hr:5839, lam:4.21276, beta:-0.25517, mag:4.73},
+  {hr:5883, lam:4.23837, beta:-0.23003, mag:3.96},
+  {hr:5885, lam:4.20842, beta:-0.09578, mag:4.65},
+  {hr:5904, lam:4.21703, beta:-0.08635, mag:4.67},
+  {hr:5908, lam:4.18656, beta:0.06059, mag:4.13},
+  {hr:5928, lam:4.2437, beta:-0.15008, mag:3.88},
+  {hr:5941, lam:4.19576, beta:0.10621, mag:4.95},
+  {hr:5944, lam:4.2401, beta:-0.09556, mag:2.89},
+  {hr:5953, lam:4.23367, beta:-0.03466, mag:2.3},
+  {hr:5969, lam:4.25658, beta:-0.08782, mag:4.97},
+  {hr:5977, lam:4.21159, beta:0.16115, mag:4.16},
+  {hr:5984, lam:4.24447, beta:0.01759, mag:2.62},
+  {hr:5985, lam:4.24448, beta:0.01765, mag:4.91},
+  {hr:5993, lam:4.25283, beta:0.00385, mag:3.95},
+  {hr:5997, lam:4.25589, beta:0.00089, mag:4.32},
+  {hr:6027, lam:4.26984, beta:0.02851, mag:4.13},
+  {hr:6028, lam:4.2978, beta:-0.11659, mag:4.58},
+  {hr:6031, lam:4.23982, beta:0.18977, mag:4.94},
+  {hr:6070, lam:4.32277, beta:-0.12433, mag:4.79},
+  {hr:6081, lam:4.3186, beta:-0.04633, mag:4.59},
+  {hr:6084, lam:4.32492, beta:-0.07047, mag:2.91},
+  {hr:6104, lam:4.32057, beta:0.0271, mag:4.49},
+  {hr:6112, lam:4.33605, beta:-0.03067, mag:4.57},
+  {hr:6118, lam:4.32805, beta:0.05626, mag:4.26},
+  {hr:6129, lam:4.30318, beta:0.23058, mag:4.64},
+  {hr:6134, lam:4.35917, beta:-0.07976, mag:1.07},
+  {hr:6141, lam:4.35877, beta:-0.05657, mag:4.79},
+  {hr:6143, lam:4.38902, beta:-0.22129, mag:4.24},
+  {hr:6147, lam:4.34005, beta:0.09069, mag:4.29},
+  {hr:6153, lam:4.35683, beta:0.00755, mag:4.44},
+  {hr:6165, lam:4.38875, beta:-0.10682, mag:2.83},
+  {hr:6166, lam:4.40859, beta:-0.22813, mag:4.17},
+  {hr:6175, lam:4.34987, beta:0.19882, mag:2.58},
+  {hr:6196, lam:4.38607, beta:0.07738, mag:4.92},
+  {hr:6241, lam:4.45644, beta:-0.20488, mag:2.29},
+  {hr:6243, lam:4.40535, beta:0.20231, mag:4.64},
+  {hr:6334, lam:4.50976, beta:-0.19614, mag:4.86},
+  {hr:6378, lam:4.50242, beta:0.12563, mag:2.43},
+  {hr:6401, lam:4.53808, beta:-0.06195, mag:4.33},
+  {hr:6445, lam:4.55367, beta:0.03524, mag:4.39},
+  {hr:6446, lam:4.54305, beta:0.17913, mag:4.34},
+  {hr:6453, lam:4.5622, beta:-0.03218, mag:3.26},
+  {hr:6486, lam:4.57858, beta:-0.01675, mag:4.16},
+  {hr:6492, lam:4.58813, beta:-0.1157, mag:4.28},
+  {hr:6508, lam:4.60789, beta:-0.24449, mag:2.68},
+  {hr:6519, lam:4.59846, beta:-0.01196, mag:4.8},
+  {hr:6527, lam:4.61789, beta:-0.24065, mag:1.63},
+  {hr:6561, lam:4.6172, beta:0.13849, mag:3.54},
+  {hr:6581, lam:4.63199, beta:0.18308, mag:4.24},
+  {hr:6595, lam:4.64518, beta:0.02968, mag:4.87},
+  {hr:6616, lam:4.66425, beta:-0.07717, mag:4.56},
+  {hr:6628, lam:4.67178, beta:-0.14461, mag:4.81},
+  {hr:6630, lam:4.67605, beta:-0.23775, mag:3.19},
+  {hr:6698, lam:4.70808, beta:0.23851, mag:3.32},
+  {hr:6700, lam:4.71156, beta:-0.00658, mag:4.74},
+  {hr:6742, lam:4.73155, beta:-0.10726, mag:4.65},
+  {hr:6746, lam:4.73441, beta:-0.12202, mag:3.63},
+  {hr:6766, lam:4.74351, beta:-0.0878, mag:4.56},
+  {hr:6801, lam:4.75922, beta:-0.00505, mag:4.96},
+  {hr:6812, lam:4.76848, beta:0.04088, mag:3.84},
+  {hr:6832, lam:4.77571, beta:-0.23349, mag:3.13},
+  {hr:6842, lam:4.78268, beta:-0.06399, mag:4.65},
+  {hr:6859, lam:4.79234, beta:-0.11296, mag:2.7},
+  {hr:6879, lam:4.80103, beta:-0.19289, mag:1.81},
+  {hr:6884, lam:4.81768, beta:0.251, mag:4.67},
+  {hr:6896, lam:4.81606, beta:0.04829, mag:4.86},
+  {hr:6913, lam:4.82264, beta:-0.03727, mag:2.83},
+  {hr:6930, lam:4.83711, beta:0.15171, mag:4.69},
+  {hr:6973, lam:4.86976, beta:0.26041, mag:3.85},
+  {hr:7020, lam:4.90016, beta:0.24422, mag:4.71},
+  {hr:7029, lam:4.8731, beta:-0.21915, mag:4.86},
+  {hr:7032, lam:4.90676, beta:0.25734, mag:4.9},
+  {hr:7039, lam:4.89009, beta:-0.06901, mag:3.17},
+  {hr:7116, lam:4.93006, beta:0.00192, mag:4.85},
+  {hr:7120, lam:4.93398, beta:0.00284, mag:5},
+  {hr:7121, lam:4.92855, beta:-0.06021, mag:2.07},
+  {hr:7150, lam:4.94716, beta:0.02899, mag:3.53},
+  {hr:7152, lam:4.92249, beta:-0.24923, mag:4.83},
+  {hr:7194, lam:4.95042, beta:-0.1253, mag:2.61},
+  {hr:7217, lam:4.97408, beta:0.01501, mag:3.77},
+  {hr:7226, lam:4.95005, beta:-0.25143, mag:4.23},
+  {hr:7227, lam:4.95006, beta:-0.25143, mag:4.99},
+  {hr:7234, lam:4.9713, beta:-0.08882, mag:3.32},
+  {hr:7264, lam:4.99604, beta:0.02508, mag:2.9},
+  {hr:7292, lam:5.00987, beta:-0.0511, mag:4.87},
+  {hr:7304, lam:5.03263, beta:0.05687, mag:4.88},
+  {hr:7340, lam:5.05186, beta:0.07372, mag:3.93},
+  {hr:7342, lam:5.0567, beta:0.10639, mag:4.58},
+  {hr:7440, lam:5.0937, beta:-0.05689, mag:4.61},
+  {hr:7446, lam:5.14618, beta:0.25039, mag:4.97},
+  {hr:7515, lam:5.14735, beta:0.02456, mag:4.88},
+  {hr:7597, lam:5.16357, beta:-0.09463, mag:4.7},
+  {hr:7604, lam:5.16486, beta:-0.11037, mag:4.53},
+  {hr:7618, lam:5.17593, beta:-0.09524, mag:4.85},
+  {hr:7623, lam:5.14645, beta:-0.25108, mag:4.37},
+  {hr:7650, lam:5.18478, beta:-0.12403, mag:4.49},
+  {hr:7659, lam:5.17513, beta:-0.19955, mag:4.99},
+  {hr:7747, lam:5.30178, beta:0.12197, mag:4.24},
+  {hr:7754, lam:5.30333, beta:0.12095, mag:3.58},
+  {hr:7773, lam:5.31336, beta:0.11477, mag:4.76},
+  {hr:7776, lam:5.30663, beta:0.08009, mag:3.09},
+  {hr:7822, lam:5.32614, beta:0.02091, mag:4.8},
+  {hr:7936, lam:5.36094, beta:-0.12267, mag:4.15},
+  {hr:7950, lam:5.4406, beta:0.14103, mag:3.77},
+  {hr:7951, lam:5.46227, beta:0.21604, mag:4.46},
+  {hr:7980, lam:5.37491, beta:-0.15643, mag:4.11},
+  {hr:7990, lam:5.46389, beta:0.14382, mag:4.72},
+  {hr:8039, lam:5.38314, beta:-0.25596, mag:4.67},
+  {hr:8060, lam:5.45832, beta:-0.05222, mag:4.85},
+  {hr:8075, lam:5.47761, beta:-0.01023, mag:4.08},
+  {hr:8080, lam:5.44271, beta:-0.14144, mag:4.52},
+  {hr:8093, lam:5.52216, beta:0.08316, mag:4.51},
+  {hr:8167, lam:5.5446, beta:-0.02386, mag:4.29},
+  {hr:8204, lam:5.53159, beta:-0.12201, mag:3.75},
+  {hr:8213, lam:5.54288, beta:-0.11463, mag:4.51},
+  {hr:8232, lam:5.64431, beta:0.15036, mag:2.89},
+  {hr:8260, lam:5.58853, beta:-0.08685, mag:4.52},
+  {hr:8264, lam:5.65694, beta:0.10398, mag:4.69},
+  {hr:8278, lam:5.61631, beta:-0.04463, mag:3.68},
+  {hr:8288, lam:5.61377, beta:-0.08447, mag:4.73},
+  {hr:8322, lam:5.64688, beta:-0.04541, mag:2.85},
+  {hr:8402, lam:5.79637, beta:0.15992, mag:4.75},
+  {hr:8414, lam:5.8181, beta:0.18608, mag:2.94},
+  {hr:8418, lam:5.73725, beta:-0.03632, mag:4.29},
+  {hr:8499, lam:5.81655, beta:0.04724, mag:4.17},
+  {hr:8518, lam:5.87677, beta:0.14373, mag:3.85},
+  {hr:8539, lam:5.90965, beta:0.18279, mag:4.81},
+  {hr:8551, lam:5.94241, beta:0.23232, mag:4.8},
+  {hr:8558, lam:5.91508, beta:0.15438, mag:3.66},
+  {hr:8559, lam:5.91509, beta:0.15439, mag:4.1},
+  {hr:8573, lam:5.85362, beta:-0.02143, mag:4.83},
+  {hr:8597, lam:5.94116, beta:0.14219, mag:4.04},
+  {hr:8649, lam:5.85096, beta:-0.17379, mag:4.68},
+  {hr:8679, lam:5.90961, beta:-0.09886, mag:4.04},
+  {hr:8698, lam:5.96163, beta:-0.00675, mag:3.75},
+  {hr:8709, lam:5.91446, beta:-0.14297, mag:3.27},
+  {hr:8717, lam:6.08369, beta:0.25292, mag:4.91},
+  {hr:8773, lam:6.08396, beta:0.15801, mag:4.5},
+  {hr:8795, lam:6.13596, beta:0.2423, mag:4.54},
+  {hr:8812, lam:5.93443, beta:-0.2529, mag:3.68},
+  {hr:8834, lam:6.05871, beta:-0.01837, mag:4.23},
+  {hr:8841, lam:6.04423, beta:-0.06984, mag:4.24},
+  {hr:8850, lam:6.05735, beta:-0.04959, mag:5},
+  {hr:8852, lam:6.13402, beta:0.12666, mag:3.7},
+  {hr:8858, lam:6.05157, beta:-0.07476, mag:4.41},
+  {hr:8892, lam:5.99445, beta:-0.25807, mag:3.96},
+  {hr:8911, lam:6.15933, beta:0.07736, mag:4.93},
+  {hr:8916, lam:6.19922, beta:0.15766, mag:4.28},
+  {hr:8923, lam:6.24987, beta:0.25754, mag:4.54},
+  {hr:8968, lam:6.10282, beta:-0.19263, mag:4.98},
+  {hr:8969, lam:6.24208, beta:0.12486, mag:4.14},
+  {hr:8982, lam:6.08444, beta:-0.25332, mag:4.82},
+  {hr:8984, lam:6.22364, beta:0.05965, mag:4.5},
+  {hr:8988, lam:6.11208, beta:-0.2028, mag:4.49},
+  {hr:9067, lam:6.25316, beta:-0.05463, mag:4.88},
+  {hr:9072, lam:0.04509, beta:0.11106, mag:4.03},
+  {hr:9089, lam:6.24914, beta:-0.09968, mag:4.4},
+  {hr:9103, lam:6.22746, beta:-0.17594, mag:4.94},
+  {hr:352, lam:0.49423, beta:0.36197, mag:4.52},
+  {hr:360, lam:0.4618, beta:0.27058, mag:4.67},
+  {hr:383, lam:0.50245, beta:0.30483, mag:4.75},
+  {hr:1101, lam:0.90674, beta:-0.32178, mag:4.3},
+  {hr:4932, lam:3.31508, beta:0.28283, mag:2.84},
+  {hr:5511, lam:3.81384, beta:0.29847, mag:3.73},
+  {hr:5530, lam:3.92744, beta:0.00632, mag:5.15},
+  {hr:6247, lam:4.47076, beta:-0.26918, mag:3},
+  {hr:6271, lam:4.48964, beta:-0.34285, mag:3.61},
+  {hr:6380, lam:4.55082, beta:-0.35227, mag:3.32},
+  {hr:6553, lam:4.63558, beta:-0.34287, mag:1.86},
+  {hr:6580, lam:4.65077, beta:-0.27304, mag:2.39},
+  {hr:6615, lam:4.66915, beta:-0.29172, mag:3.01},
+];
+
+const LINES = {
+  Aqr: [
+    [7950,7990],
+    [7990,8232],
+    [8232,8414],
+    [8232,8418],
+    [8414,8499],
+    [8414,8518],
+    [8414,8539],
+    [8499,8698],
+    [8518,8558],
+    [8539,8558],
+    [8558,8597],
+    [8679,8698],
+    [8679,8709],
+    [8698,8834],
+    [8709,8858],
+    [8834,8858],
+    [8858,8892],
+  ],
+  Ari: [
+    [546,553],
+    [553,617],
+    [617,838],
+  ],
+  Cap: [
+    [7747,7776],
+    [7747,8075],
+    [7776,7936],
+    [7936,7980],
+    [7980,8204],
+    [8075,8278],
+    [8204,8278],
+    [8278,8322],
+  ],
+  Cnc: [
+    [3249,3461],
+    [3449,3461],
+    [3449,3475],
+    [3461,3572],
+  ],
+  Gem: [
+    [2134,2216],
+    [2216,2286],
+    [2286,2473],
+    [2343,2473],
+    [2421,2650],
+    [2473,2697],
+    [2484,2763],
+    [2540,2697],
+    [2650,2777],
+    [2697,2821],
+    [2697,2852],
+    [2763,2777],
+    [2777,2905],
+    [2821,2905],
+    [2852,2890],
+    [2905,2985],
+    [2905,2990],
+  ],
+  Leo: [
+    [3731,3773],
+    [3731,3905],
+    [3773,3873],
+    [3873,3905],
+    [3873,3975],
+    [3905,4031],
+    [3975,3982],
+    [3975,4057],
+    [3975,4359],
+    [4031,4057],
+    [4057,4357],
+    [4357,4359],
+    [4357,4534],
+    [4359,4399],
+    [4359,4534],
+    [4386,4399],
+  ],
+  Lib: [
+    [5530,5603],
+    [5530,5685],
+    [5530,5787],
+    [5685,5787],
+    [5787,5794],
+    [5794,5812],
+  ],
+  Psc: [
+    [224,294],
+    [224,9072],
+    [294,489],
+    [352,360],
+    [352,383],
+    [360,383],
+    [360,437],
+    [437,510],
+    [489,596],
+    [510,596],
+    [8852,8911],
+    [8852,8916],
+    [8911,8984],
+    [8916,8969],
+    [8969,8984],
+    [8969,9072],
+  ],
+  Sco: [
+    [5928,5944],
+    [5944,5953],
+    [5953,5984],
+    [5953,6084],
+    [5984,6027],
+    [6084,6134],
+    [6134,6165],
+    [6165,6241],
+    [6241,6247],
+    [6247,6271],
+    [6271,6380],
+    [6380,6553],
+    [6508,6527],
+    [6508,6580],
+    [6527,6630],
+    [6553,6615],
+    [6580,6615],
+  ],
+  Sgr: [
+    [6746,6859],
+    [6746,6879],
+    [6812,6913],
+    [6832,6879],
+    [6859,6879],
+    [6859,6913],
+    [6859,7039],
+    [6879,7194],
+    [6913,7039],
+    [7039,7121],
+    [7039,7194],
+    [7121,7234],
+    [7150,7217],
+    [7150,7264],
+    [7194,7234],
+    [7217,7264],
+    [7264,7340],
+  ],
+  Tau: [
+    [1030,1038],
+    [1030,1101],
+    [1038,1239],
+    [1038,1251],
+    [1239,1346],
+    [1346,1373],
+    [1346,1457],
+    [1373,1409],
+    [1409,1791],
+    [1457,1910],
+  ],
+  Vir: [
+    [4517,4540],
+    [4517,4608],
+    [4540,4689],
+    [4608,4689],
+    [4689,4825],
+    [4825,4910],
+    [4825,4963],
+    [4825,5107],
+    [4910,4932],
+    [4963,5056],
+    [5107,5264],
+    [5107,5338],
+    [5264,5511],
+    [5338,5487],
+  ],
+};
+
+// Build star lookup by HR
+const starByHR = {};
+STARS.forEach(s => { starByHR[s.hr] = s; });
+
+const ZODIAC_NAMES = {Ari:'Aries',Tau:'Taurus',Gem:'Gemini',Cnc:'Cancer',Leo:'Leo',Vir:'Virgo',Lib:'Libra',Sco:'Scorpius',Sgr:'Sagittarius',Cap:'Capricornus',Aqr:'Aquarius',Psc:'Pisces'};
+
+// ---- Planet data ----
+// J2000 Keplerian elements from "Keplerian Elements for Approximate Positions of the
+// Major Planets", E.M. Standish, JPL/Caltech (Table 1, valid 1800-2050 AD).
+// Rates of change (< 0.6 deg/century) are ignored; elements are fixed at J2000.
+// M0 = L0 - varpi; period = 360*36525/L_dot (days).
+const PLANETS = [
+  {name:"Mercury", a:0.38710, e:0.20564, varpi:77.46, inc:7.0050, Omega:48.331, color:[0.35,0.35,0.35], period:87.969,   M0:174.793},
+  {name:"Venus",   a:0.72334, e:0.00678, varpi:131.60, inc:3.3947, Omega:76.680, color:[0.70,0.45,0.05], period:224.701,  M0:50.377},
+  {name:"Earth",   a:1.00000, e:0.01671, varpi:102.94, inc:0.0,    Omega:0.0,    color:[0.05,0.30,0.65], period:365.256,  M0:357.527},
+  {name:"Mars",    a:1.52371, e:0.09339, varpi:336.06, inc:1.8497, Omega:49.560, color:[0.70,0.15,0.05], period:686.980,  M0:19.390},
+  {name:"Jupiter", a:5.20289, e:0.04839, varpi:14.73,  inc:1.3044, Omega:100.474,color:[0.50,0.30,0.10], period:4332.82,  M0:19.668},
+  {name:"Saturn",  a:9.53668, e:0.05386, varpi:92.60,  inc:2.4860, Omega:113.662,color:[0.60,0.50,0.15], period:10755.88, M0:317.355},
+  {name:"Uranus",  a:19.18916,e:0.04726, varpi:170.95, inc:0.7726, Omega:74.017, color:[0.15,0.55,0.65], period:30687.4,  M0:142.284},
+  {name:"Neptune", a:30.06992,e:0.00859, varpi:44.96,  inc:1.7700, Omega:131.784,color:[0.10,0.15,0.60], period:60189.7,  M0:259.915},
+  {name:"Pluto",   a:39.48212,e:0.24883, varpi:224.07, inc:17.1400,Omega:110.304,color:[0.55,0.40,0.30], period:90553.0,  M0:14.860},
+];
+
+// Moon mean orbital elements from JPL DE405/LE405, epoch J2000 (2000 Jan 1.50 TT).
+// varpi and Omega precess significantly so are given as epoch values + annual rates.
+// varpi0 = w + Omega; rates from Pw (5.997 yr) and Pnode (18.600 yr).
+// Period is anomalistic (27.5545 d), not sidereal (27.322 d).
+const MOON = {e:0.0554, period:27.5545, M0:135.27, varpi0:83.23, varpiRate:40.68, displayA:0.2, inc:5.16, Omega0:125.08, OmegaRate:-19.355};
+
+// J2000
+const J2000 = new Date(Date.UTC(2000, 0, 1, 12, 0, 0));
+function daysSinceJ2000(d) { return (d.getTime() - J2000.getTime()) / 86400000; }
+
+// ---- Math ----
+const {PI, sin, cos, tan, atan2, sqrt, abs, max, min, round} = Math;
+const TAU = 2 * PI;
+const DEG = PI / 180;
+
+function solveKepler(M, e) {
+  let E = M;
+  for (let i = 0; i < 50; i++) {
+    const dE = (E - e * sin(E) - M) / (1 - e * cos(E));
+    E -= dE;
+    if (abs(dE) < 1e-10) break;
+  }
+  return E;
+}
+
+function trueAnomaly(E, e) {
+  return 2 * atan2(sqrt(1+e)*sin(E/2), sqrt(1-e)*cos(E/2));
+}
+
+function planetHelioXYZ(p, dt) {
+  const M = (((p.M0 + 360 / p.period * dt) % 360 + 360) % 360) * DEG;
+  return orbitPoint3D(p, solveKepler(M, p.e));
+}
+
+function orbitPoint3D(p, E) {
+  const nu = trueAnomaly(E, p.e);
+  const r = p.a * (1 - p.e * cos(E));
+  const xo = r * cos(nu), yo = r * sin(nu);
+  const Om = p.Omega * DEG, inc = p.inc * DEG;
+  const omega = (p.varpi - p.Omega) * DEG;
+  const cO = cos(Om), sO = sin(Om), cw = cos(omega), sw = sin(omega);
+  const ci = cos(inc), si = sin(inc);
+  return [
+    (cO*cw - sO*sw*ci)*xo + (-cO*sw - sO*cw*ci)*yo,
+    (sO*cw + cO*sw*ci)*xo + (-sO*sw + cO*cw*ci)*yo,
+    sw*si*xo + cw*si*yo
+  ];
+}
+
+function project(lam, beta) {
+  const theta = PI/2 + beta;
+  const r = 2 * tan(theta / 2);
+  return [r * cos(lam), r * sin(lam)];
+}
+
+// ---- Drawing ----
+let canvas, ctx;
+let currentDate, auRadius, darkMode;
+let animTimer = null;
+
+function sizeCanvas() {
+  const disp = document.getElementById('display');
+  const size = min(disp.clientWidth, disp.clientHeight) - 4;
+  canvas.width = canvas.height = max(100, size);
+}
+
+function init() {
+  canvas = document.getElementById('cv');
+  sizeCanvas();
+
+  const now = new Date();
+  setDateFields(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0)));
+  document.getElementById('auInput').addEventListener('change', () => {
+    const el = document.getElementById('auInput');
+    const v = min(40, max(1, parseFloat(el.value) || 10));
+    el.value = v.toFixed(1);
+    draw();
+  });
+  document.getElementById('darkToggle').addEventListener('change', () => draw());
+  document.getElementById('sunTopToggle').addEventListener('change', () => draw());
+  document.getElementById('eclToggle').addEventListener('change', () => draw());
+  document.getElementById('inclToggle').addEventListener('change', () => draw());
+  for (const r of document.querySelectorAll('input[name="objMode"]'))
+    r.addEventListener('change', () => draw());
+  for (const name of ALL_OBJECTS)
+    document.getElementById('obj' + name).addEventListener('change', () => draw());
+  for (const id of ['dpYear','dpMonth','dpDay']) {
+    const el = document.getElementById(id);
+    el.addEventListener('change', () => draw());
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.target.blur(); draw(); } });
+  }
+
+  draw();
+  window.addEventListener('resize', () => { sizeCanvas(); draw(); });
+}
+
+function getDateFromFields() {
+  const y = max(1900, min(2100, parseInt(document.getElementById('dpYear').value) || 2026));
+  const m = parseInt(document.getElementById('dpMonth').value) || 1;
+  const d = parseInt(document.getElementById('dpDay').value) || 1;
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  setDateFields(dt);
+  return dt;
+}
+
+function setDateFields(d) {
+  document.getElementById('dpYear').value = d.getUTCFullYear();
+  document.getElementById('dpMonth').value = String(d.getUTCMonth() + 1).padStart(2, '0');
+  document.getElementById('dpDay').value = String(d.getUTCDate()).padStart(2, '0');
+}
+
+function getParams() {
+  currentDate = getDateFromFields();
+  auRadius = parseFloat(document.getElementById('auInput').value) || 10;
+  darkMode = document.getElementById('darkToggle').checked;
+}
+
+function stepDate(days) {
+  const d = getDateFromFields();
+  d.setUTCDate(d.getUTCDate() + days);
+  setDateFields(d);
+  draw();
+}
+
+function stepPart(part, dir) {
+  const d = getDateFromFields();
+  if (part === 'y') d.setUTCFullYear(max(1900, min(2100, d.getUTCFullYear() + dir)));
+  else if (part === 'm') d.setUTCMonth(d.getUTCMonth() + dir);
+  else d.setUTCDate(d.getUTCDate() + dir);
+  setDateFields(d);
+  draw();
+}
+
+function stepAU(delta) {
+  const el = document.getElementById('auInput');
+  let v = parseFloat(el.value) || 10;
+  v = min(40, max(1, round((v + delta) * 10) / 10));
+  el.value = v.toFixed(1);
+  draw();
+}
+
+function togglePanel() {
+  const sb = document.getElementById('sidebar');
+  const visible = sb.style.display !== 'none';
+  sb.style.display = visible ? 'none' : '';
+  sizeCanvas();
+  draw();
+}
+
+function savePNG() {
+  const d = getDateFromFields();
+  const p = (v) => String(v).padStart(2, '0');
+  const fname = `ssmap-${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())}-to${auRadius.toFixed(1)}au.png`;
+  const link = document.createElement('a');
+  link.download = fname;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function setToday() {
+  animStop();
+  const now = new Date();
+  setDateFields(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0)));
+  draw();
+}
+
+function updateAnimButtons(state) {
+  document.getElementById('btnBack').classList.toggle('active', state === -1);
+  document.getElementById('btnStop').classList.toggle('active', state === 0);
+  document.getElementById('btnFwd').classList.toggle('active', state === 1);
+}
+
+function playAnim(dir) {
+  animStop();
+  animTimer = setInterval(() => stepDate(dir), 50);
+  updateAnimButtons(dir);
+}
+function animStop() {
+  if (animTimer) { clearInterval(animTimer); animTimer = null; }
+  updateAnimButtons(0);
+}
+
+function rgb(c) {
+  return `rgb(${c.map(v=>round(v*255)).join(',')})`;
+}
+
+const ALL_OBJECTS = ['Sun','Moon','Mercury','Venus','Earth','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto'];
+
+function getAutoVisibility(au) {
+  const skipInner = au > 10;
+  const vis = {};
+  vis.Sun = true;
+  vis.Moon = au <= 10;
+  for (const p of PLANETS) {
+    if (['Mercury','Venus','Mars'].includes(p.name)) {
+      vis[p.name] = p.a <= au && !skipInner;
+    } else {
+      vis[p.name] = p.a <= au;
+    }
+  }
+  return vis;
+}
+
+function isAutoMode() {
+  return document.querySelector('input[name="objMode"][value="auto"]').checked;
+}
+
+function syncCheckboxes(au) {
+  const auto = isAutoMode();
+  const vis = auto ? getAutoVisibility(au) : null;
+  for (const name of ALL_OBJECTS) {
+    const cb = document.getElementById('obj' + name);
+    cb.disabled = auto;
+    if (auto) cb.checked = vis[name];
+  }
+}
+
+function getVisibleObjects() {
+  const vis = {};
+  for (const name of ALL_OBJECTS) {
+    vis[name] = document.getElementById('obj' + name).checked;
+  }
+  return vis;
+}
+
+function draw() {
+  getParams();
+  syncCheckboxes(auRadius);
+  const visible = getVisibleObjects();
+  document.body.className = darkMode ? 'dark' : 'light';
+  ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  const sunTop = document.getElementById('sunTopToggle').checked;
+  const showEcl = document.getElementById('eclToggle').checked;
+  const showIncl = document.getElementById('inclToggle').checked;
+  const sunCentered = !showEcl;
+
+  const edgeH = showIncl ? round(W * 0.15) : 0;
+  const S = W - edgeH;
+  const cx = W/2, cy = S/2;
+
+  const bg = darkMode ? '#000' : '#fff';
+  const starC = darkMode ? '#fff' : '#000';
+  const gridC = darkMode ? 'rgba(50,65,90,0.8)' : 'rgba(153,178,209,0.8)';
+  const eclC = darkMode ? 'rgba(140,100,25,0.9)' : 'rgba(178,128,25,0.9)';
+  const stickC = darkMode ? 'rgba(75,100,140,0.7)' : 'rgba(115,140,184,0.7)';
+  const labelC = darkMode ? 'rgba(115,115,180,0.9)' : 'rgba(64,64,128,0.9)';
+  const lonC = darkMode ? 'rgba(130,130,130,0.8)' : 'rgba(90,90,90,0.8)';
+  const titleC = darkMode ? '#fff' : '#000';
+
+  // Projection params
+  const bandDeg = 15;
+  const rOuter = 2 * tan((PI/2 + bandDeg*DEG) / 2);
+  const rInner = 2 * tan((PI/2 - bandDeg*DEG) / 2);
+  const rEcl = 2 * tan(PI/4);
+  const scale = (S - 2) / (2 * rOuter);
+
+  const innerPts = rInner * scale;
+  const auScale = innerPts * 0.95 / auRadius;
+  const eclPts = rEcl * scale;
+
+  // Compute Earth position and Sun angle early (needed for rotation)
+  const dt = daysSinceJ2000(currentDate);
+  const [earthX, earthY] = planetHelioXYZ(PLANETS[2], dt);
+  const sunAng = atan2(-earthY, -earthX);
+
+  // Clear
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Apply rotation if "Sun at top" is enabled
+  if (sunTop) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(sunAng - PI/2);
+    ctx.translate(-cx, -cy);
+  }
+
+  function toScreen(px, py) { return [cx + px * scale, cy - py * scale]; }
+  function toScreenAU(ax, ay) { return [cx + ax * auScale, cy - ay * auScale]; }
+
+  // Draw text that stays horizontal even when chart is rotated
+  function uprightText(x, y, text, align) {
+    if (sunTop) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-(sunAng - PI/2));
+      ctx.textAlign = align || 'left';
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    } else {
+      ctx.textAlign = align || 'left';
+      ctx.fillText(text, x, y);
+    }
+  }
+
+  if (showEcl) {
+    // Band boundaries
+    ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, rInner*scale, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, rOuter*scale, 0, TAU); ctx.stroke();
+
+    // Ecliptic
+    ctx.strokeStyle = eclC; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, eclPts, 0, TAU); ctx.stroke();
+
+    // 30-deg lines
+    ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+    for (let d = 0; d < 360; d += 30) {
+      const lam = d * DEG;
+      const [x1,y1] = project(lam, -bandDeg*DEG);
+      const [x2,y2] = project(lam, bandDeg*DEG);
+      const [sx1,sy1] = toScreen(x1,y1);
+      const [sx2,sy2] = toScreen(x2,y2);
+      ctx.beginPath(); ctx.moveTo(sx1,sy1); ctx.lineTo(sx2,sy2); ctx.stroke();
+    }
+
+    // Constellation stick figures
+    ctx.strokeStyle = stickC; ctx.lineWidth = 1.5;
+    for (const con of Object.keys(LINES)) {
+      for (const [h1,h2] of LINES[con]) {
+        const s1 = starByHR[h1], s2 = starByHR[h2];
+        if (!s1 || !s2) continue;
+        const [x1,y1] = project(s1.lam, s1.beta);
+        const [x2,y2] = project(s2.lam, s2.beta);
+        const [sx1,sy1] = toScreen(x1,y1);
+        const [sx2,sy2] = toScreen(x2,y2);
+        ctx.beginPath(); ctx.moveTo(sx1,sy1); ctx.lineTo(sx2,sy2); ctx.stroke();
+      }
+    }
+
+    // Stars
+    const bandRad = bandDeg * DEG;
+    for (const s of STARS) {
+      if (abs(s.beta) > bandRad || s.mag > 5) continue;
+      const [x,y] = project(s.lam, s.beta);
+      const [sx,sy] = toScreen(x,y);
+      const r = max(0.5, (5.5 - s.mag) * W/1000);
+      ctx.fillStyle = starC;
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill();
+    }
+
+    // Constellation labels
+    ctx.font = `italic ${round(W/70)}px sans-serif`;
+    ctx.fillStyle = labelC; ctx.textAlign = 'center';
+    for (const con of Object.keys(LINES)) {
+      const hrs = new Set();
+      LINES[con].forEach(([h1,h2]) => { hrs.add(h1); hrs.add(h2); });
+      let sx=0, sy=0, n=0, lamSum=0, lamSinSum=0, lamCosSum=0;
+      hrs.forEach(h => {
+        const s = starByHR[h];
+        if (!s) return;
+        const [x,y] = project(s.lam, s.beta);
+        const [scx,scy] = toScreen(x,y);
+        sx+=scx; sy+=scy; n++;
+        lamSinSum += sin(s.lam); lamCosSum += cos(s.lam);
+      });
+      if (n === 0) continue;
+      sx/=n; sy/=n;
+      const avgLam = atan2(lamSinSum, lamCosSum);
+      const nudge = {Cnc: 1, Lib: -1, Cap: -1}[con] || 0;
+      if (nudge) {
+        const fs = round(W/70);
+        sx += cos(avgLam) * nudge * fs;
+        sy -= sin(avgLam) * nudge * fs;
+      }
+      const ang = avgLam + PI/2 + PI;
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(-ang);
+      ctx.fillText(ZODIAC_NAMES[con]||con, 0, 0);
+      ctx.restore();
+    }
+
+    // Longitude labels inside inner ring
+    ctx.font = `${round(W/80)}px sans-serif`;
+    ctx.fillStyle = lonC; ctx.textAlign = 'center';
+    const lonR = rInner * scale - W/100 - round(W/160);
+    for (let d = 0; d < 360; d += 30) {
+      const lam = d * DEG;
+      const lx = cx + lonR * cos(lam);
+      const ly = cy - lonR * sin(lam);
+      const ang = lam + PI/2 + PI;
+      ctx.save(); ctx.translate(lx, ly); ctx.rotate(-ang);
+      ctx.fillText(`${d}°`, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  // ---- Solar system ----
+  const sunPx = sunCentered ? cx : cx + (-earthX) * auScale;
+  const sunPy = sunCentered ? cy : cy - (-earthY) * auScale;
+  const earthPx = sunCentered ? cx + earthX * auScale : cx;
+  const earthPy = sunCentered ? cy - earthY * auScale : cy;
+
+  // Build unified orbit descriptors for planets + Moon
+  const orbits = [];
+  for (const p of PLANETS) {
+    if (!visible[p.name]) continue;
+    orbits.push({
+      name: p.name, a: p.a, e: p.e, varpi: p.varpi,
+      inc: p.inc, Omega: p.Omega,
+      M: (((p.M0 + 360 / p.period * dt) % 360 + 360) % 360),
+      refX: sunPx, refY: sunPy,
+      colorStr: rgb(p.color), color: p.color
+    });
+  }
+  const mc = darkMode ? 'rgba(160,160,160,0.7)' : 'rgba(90,90,90,0.7)';
+  if (visible.Moon) {
+    const dtYr = dt / 365.25;
+    orbits.push({
+      name: 'Moon', a: MOON.displayA, e: MOON.e,
+      inc: MOON.inc,
+      Omega: MOON.Omega0 + MOON.OmegaRate * dtYr,
+      varpi: MOON.varpi0 + MOON.varpiRate * dtYr,
+      M: (((MOON.M0 + 360 / MOON.period * dt) % 360 + 360) % 360),
+      refX: earthPx, refY: earthPy,
+      colorStr: mc, color: null
+    });
+  }
+
+  // Projection helpers for top-down and edge-on views
+  const edgeCy = S + edgeH / 2;
+  const rot = sunTop ? (sunAng - PI/2) : 0;
+  const cosR = cos(rot), sinR = sin(rot);
+
+  function drawOrbitPath(orb, mode) {
+    ctx.beginPath();
+    for (let i = 0; i <= 120; i++) {
+      const E = TAU * i / 120;
+      const [X, Y, Z] = orbitPoint3D(orb, E);
+      let sx, sy;
+      if (mode === 'top') {
+        sx = orb.refX + X * auScale;
+        sy = orb.refY - Y * auScale;
+      } else {
+        const mx = orb.refX + X * auScale, my = orb.refY - Y * auScale;
+        const dx = mx - cx, dy = my - cy;
+        sx = cx + dx * cosR - dy * sinR;
+        sy = edgeCy - Z * auScale;
+      }
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+    }
+    ctx.closePath(); ctx.stroke();
+  }
+
+  function orbPosition(orb, mode) {
+    const E = solveKepler(orb.M * DEG, orb.e);
+    const [X, Y, Z] = orbitPoint3D(orb, E);
+    if (mode === 'top') {
+      return { px: orb.refX + X * auScale, py: orb.refY - Y * auScale, X, Y, Z };
+    }
+    const mx = orb.refX + X * auScale, my = orb.refY - Y * auScale;
+    const dx = mx - cx, dy = my - cy;
+    return { px: cx + dx * cosR - dy * sinR, py: edgeCy - Z * auScale, X, Y, Z };
+  }
+
+  // Draw orbit ellipses (top-down)
+  for (const orb of orbits) {
+    ctx.strokeStyle = orb.colorStr; ctx.lineWidth = 1.2;
+    drawOrbitPath(orb, 'top');
+  }
+
+  // Compute positions and build list for sight lines / labels
+  const positions = [];
+  for (const orb of orbits) {
+    if (orb.name === 'Moon') continue;
+    const pos = orbPosition(orb, 'top');
+    if (orb.name === 'Earth') {
+      positions.push({name: 'Earth', px: pos.px, py: pos.py, color: orb.color});
+    } else {
+      const gx = pos.X - earthX, gy = pos.Y - earthY;
+      positions.push({name: orb.name, px: pos.px, py: pos.py, color: orb.color,
+                      eclLam: atan2(gy, gx), eclBeta: atan2(pos.Z, sqrt(gx*gx + gy*gy))});
+    }
+  }
+
+  // Sight lines + ecliptic dots
+  if (showEcl) {
+    ctx.lineWidth = 0.6;
+    for (const p of positions) {
+      if (p.name === 'Earth') continue;
+      const [projX, projY] = project(p.eclLam, p.eclBeta);
+      const [rx, ry] = toScreen(projX, projY);
+      ctx.strokeStyle = rgb(p.color);
+      ctx.beginPath(); ctx.moveTo(earthPx, earthPy); ctx.lineTo(rx, ry); ctx.stroke();
+      ctx.fillStyle = rgb(p.color);
+      ctx.beginPath(); ctx.arc(rx, ry, W/200, 0, TAU); ctx.fill();
+    }
+  }
+
+  // Sun
+  if (visible.Sun) {
+    if (showEcl) {
+      const srx = cx + eclPts * cos(sunAng);
+      const sry = cy - eclPts * sin(sunAng);
+      ctx.strokeStyle = 'rgba(230,180,0,0.8)'; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(earthPx, earthPy); ctx.lineTo(srx, sry); ctx.stroke();
+      ctx.fillStyle = '#fd0'; ctx.strokeStyle = '#da0'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(srx, sry, max(4, W/100), 0, TAU); ctx.fill(); ctx.stroke();
+    }
+    ctx.fillStyle = '#fd0'; ctx.strokeStyle = '#da0'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(sunPx, sunPy, W/250, 0, TAU); ctx.fill(); ctx.stroke();
+  }
+
+  // Planet dots + labels
+  ctx.font = `${round(W/85)}px sans-serif`;
+  for (const p of positions) {
+    ctx.fillStyle = rgb(p.color);
+    if (p.name === 'Earth') {
+      ctx.beginPath(); ctx.arc(p.px, p.py, W/350, 0, TAU); ctx.fill();
+      uprightText(p.px, p.py + W/60, 'Earth', 'center');
+    } else {
+      ctx.beginPath(); ctx.arc(p.px, p.py, W/350, 0, TAU); ctx.fill();
+      uprightText(p.px + W/200, p.py + W/300, p.name);
+    }
+  }
+
+  // Moon ecliptic rendering + dot
+  if (visible.Moon) {
+    const moonOrb = orbits.find(o => o.name === 'Moon');
+    const mpos = orbPosition(moonOrb, 'top');
+
+    if (showEcl) {
+      const moonLam = atan2(mpos.Y, mpos.X);
+      const moonBeta = atan2(mpos.Z, sqrt(mpos.X*mpos.X + mpos.Y*mpos.Y));
+      const [mpX, mpY] = project(moonLam, moonBeta);
+      const [mrx, mry] = toScreen(mpX, mpY);
+      ctx.strokeStyle = mc; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(earthPx,earthPy); ctx.lineTo(mrx,mry); ctx.stroke();
+
+      const moonAng = moonLam;
+      const phase = ((moonAng - sunAng) % TAU + TAU) % TAU;
+      const phaseR = max(4, W / 100);
+      ctx.fillStyle = darkMode ? '#333' : '#444';
+      ctx.beginPath(); ctx.arc(mrx, mry, phaseR, 0, TAU); ctx.fill();
+      if (phase > 0.03 && phase < TAU - 0.03) {
+        const delta = ((sunAng - moonAng) % TAU + TAU) % TAU;
+        const toSun = delta < PI ? moonAng + PI/2 : moonAng - PI/2;
+        const k = cos(phase);
+        ctx.fillStyle = 'rgba(240,240,220,0.95)';
+        ctx.beginPath();
+        for (let i = 0; i <= 24; i++) {
+          const t = PI/2 - i*PI/24;
+          const bx = phaseR*cos(t), by = phaseR*sin(t);
+          const rx = mrx + bx*cos(toSun) - by*sin(toSun);
+          const ry = mry - bx*sin(toSun) - by*cos(toSun);
+          if (i===0) ctx.moveTo(rx,ry); else ctx.lineTo(rx,ry);
+        }
+        for (let i = 0; i <= 24; i++) {
+          const t = -PI/2 + i*PI/24;
+          const bx = phaseR*k*cos(t), by = phaseR*sin(t);
+          const rx = mrx + bx*cos(toSun) - by*sin(toSun);
+          const ry = mry - bx*sin(toSun) - by*cos(toSun);
+          ctx.lineTo(rx,ry);
+        }
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.strokeStyle = darkMode ? '#666' : '#888'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.arc(mrx, mry, phaseR, 0, TAU); ctx.stroke();
+    }
+
+    ctx.fillStyle = mc;
+    ctx.beginPath(); ctx.arc(mpos.px, mpos.py, W/350, 0, TAU); ctx.fill();
+    ctx.font = `${round(W/85)}px sans-serif`;
+    ctx.fillStyle = mc;
+    uprightText(mpos.px+W/200, mpos.py+W/300, 'Moon');
+  }
+
+  // Restore rotation before header
+  if (sunTop) ctx.restore();
+
+  // Edge-on view
+  if (showIncl && edgeH > 0) {
+    for (const orb of orbits) {
+      ctx.strokeStyle = orb.colorStr; ctx.lineWidth = 1;
+      drawOrbitPath(orb, 'edge');
+    }
+    for (const orb of orbits) {
+      const pos = orbPosition(orb, 'edge');
+      ctx.fillStyle = orb.colorStr;
+      ctx.beginPath(); ctx.arc(pos.px, pos.py, W/350, 0, TAU); ctx.fill();
+    }
+    if (visible.Sun) {
+      const sdx = sunPx - cx, sdy = sunPy - cy;
+      const sex = cx + sdx * cosR - sdy * sinR;
+      ctx.fillStyle = '#fd0';
+      ctx.beginPath(); ctx.arc(sex, edgeCy, W/350, 0, TAU); ctx.fill();
+    }
+  }
+
+  // Header text
+  const p2 = (v) => String(v).padStart(2, '0');
+  const dateStr = `${currentDate.getUTCFullYear()}-${p2(currentDate.getUTCMonth()+1)}-${p2(currentDate.getUTCDate())}`;
+  const hfs = round(W/38);
+  const sfs = round(W/50);
+  ctx.textAlign = 'left';
+  ctx.font = `bold ${hfs}px sans-serif`;
+  ctx.fillStyle = titleC;
+  ctx.fillText('Solar System Map', W*0.01, hfs * 1.2);
+  ctx.font = `${sfs}px sans-serif`;
+  ctx.fillText(dateStr, W*0.01, hfs * 1.2 + sfs * 1.4);
+  ctx.fillText(`to ${auRadius.toFixed(1)} AU`, W*0.01, hfs * 1.2 + sfs * 2.8);
+
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
